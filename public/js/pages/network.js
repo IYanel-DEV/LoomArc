@@ -1,4 +1,4 @@
-import { networks, servers, system, getApiKey } from '../api.js';
+import { networks, servers, system, scheduler, templates, isAdmin, getToken } from '../api.js';
 import { toastSuccess, toastError, toastInfo } from '../components/toast.js';
 import { prompt, confirm, showModal } from '../components/modal.js';
 import { ConsoleComponent } from '../components/console.js';
@@ -60,6 +60,7 @@ function render(container, network) {
       <button class="tab-btn" data-tab="bungee-console">BungeeCord Console</button>
       <button class="tab-btn" data-tab="bungee-files">Proxy Files</button>
       <button class="tab-btn" data-tab="jars">JAR Manager</button>
+      <button class="tab-btn" data-tab="scheduler">Scheduler</button>
       <button class="tab-btn" data-tab="monitoring">Monitoring</button>
     </div>
 
@@ -100,6 +101,11 @@ function render(container, network) {
       <div id="jar-manager-host"></div>
     </div>
 
+    <!-- Scheduler tab -->
+    <div data-tab-panel="scheduler" class="hidden">
+      <div id="scheduler-host"></div>
+    </div>
+
     <!-- Monitoring tab -->
     <div data-tab-panel="monitoring" class="hidden">
       <div class="card-title" style="margin-bottom:14px">Live Instance Metrics</div>
@@ -119,6 +125,7 @@ function render(container, network) {
       if (tab === 'bungee-console') initBungeeConsole(network);
       if (tab === 'bungee-files')  initProxyFileManager(network.id);
       if (tab === 'jars')          initJarManager(network, container);
+      if (tab === 'scheduler')     initScheduler(network);
       if (tab === 'monitoring')    initMonitoring(network);
     });
   });
@@ -226,6 +233,8 @@ function serverRow(s) {
         <button class="btn btn-sm btn-ghost" data-srv-action="ram" data-id="${s.id}" data-ram="${s.memory_mb}" title="Allocate RAM">💾</button>
         <button class="btn btn-sm btn-ghost" data-srv-action="plugins" data-id="${s.id}" title="Manage Plugins">🔌</button>
         <button class="btn btn-sm btn-ghost" data-srv-action="upload-jar" data-id="${s.id}" title="Upload JAR">📦</button>
+        <button class="btn btn-sm btn-ghost" data-srv-action="backups" data-id="${s.id}" title="World Backups">💾</button>
+        ${isAdmin() ? `<button class="btn btn-sm btn-ghost" data-srv-action="save-template" data-id="${s.id}" data-name="${escHtml(s.name)}" title="Save as Template">📋</button>` : ''}
         <button class="btn btn-sm btn-danger" data-srv-action="delete" data-id="${s.id}">✕</button>
       </div>
     </div>`;
@@ -264,6 +273,12 @@ async function handleServerAction(action, id, networkId, name = '') {
         break;
       case 'upload-jar':
         showJarUploadModal(id, null, () => toastSuccess('JAR uploaded'));
+        break;
+      case 'backups':
+        showBackupsModal(id, name);
+        break;
+      case 'save-template':
+        showSaveTemplateModal(id, name);
         break;
       case 'delete':
         confirm('Delete this server and all its data?', async () => {
@@ -331,7 +346,7 @@ async function initMonitoring(network) {
     });
   }
 
-  const monitor = new TelemetryMonitor(host, processMap, getApiKey());
+  const monitor = new TelemetryMonitor(host, processMap, getToken());
   _consoles.add(monitor); // destroy() is called by unmount()
 
   // Seed charts with buffered history so they're not empty on open
@@ -459,7 +474,7 @@ function showJarUploadModal(serverId, kind, onDone) {
         try {
           const res = await fetch(url, {
             method: 'POST',
-            headers: { 'x-api-key': (await import('../api.js')).getApiKey() },
+            headers: { 'Authorization': `Bearer ${getToken()}` },
             body: fd,
           });
           if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
@@ -472,26 +487,79 @@ function showJarUploadModal(serverId, kind, onDone) {
   });
 }
 
-function showAddServerModal(networkId, onDone) {
-  prompt('Add Server', [
-    { name: 'name', label: 'Server name', placeholder: 'hub', required: true,
-      hint: 'This name is used in BungeeCord routing.' },
-    { name: 'type', label: 'Type', type: 'select',
-      options: ['hub','survival','bedwars','skywars','custom'].map(t => ({ value: t, label: TYPE_LABELS[t] })) },
-    { name: 'memory_mb', label: 'Memory (MB)', type: 'number', default: '1024',
-      hint: '512–8192 recommended' },
-  ], async (data, close) => {
-    try {
-      await servers.create({
-        network_id: networkId,
-        name:       data.name,
-        type:       data.type,
-        memory_mb:  parseInt(data.memory_mb) || 1024,
-      });
-      toastSuccess(`Server "${data.name}" created`);
-      close();
-      onDone();
-    } catch (e) { toastError(e.message); }
+async function showAddServerModal(networkId, onDone) {
+  // Load templates to offer "from template" option
+  let tplList = [];
+  try { tplList = await templates.list(); } catch {}
+
+  const body = document.createElement('div');
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
+  body.style.gap = '14px';
+
+  body.innerHTML = `
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Server name <span style="color:var(--red)">*</span></label>
+      <input class="form-input" name="name" placeholder="hub" required
+        pattern="[a-zA-Z0-9_-]+" title="Letters, numbers, hyphens and underscores only" />
+      <p class="form-hint">Used in BungeeCord routing.</p>
+    </div>
+    ${tplList.length ? `
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">From template (optional)</label>
+      <select class="form-select" name="template_id">
+        <option value="">— blank server —</option>
+        ${tplList.map(t => `<option value="${t.id}">${escHtml(t.name)} (${t.server_type}, ${t.memory_mb}MB)</option>`).join('')}
+      </select>
+    </div>` : ''}
+    <div id="blank-fields">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Type</label>
+        <select class="form-select" name="type">
+          ${['hub','survival','bedwars','skywars','custom'].map(t =>
+            `<option value="${t}">${TYPE_LABELS[t]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;margin-top:14px">
+        <label class="form-label">Memory (MB)</label>
+        <input class="form-input" name="memory_mb" type="number" value="1024" />
+        <p class="form-hint">512–8192 MB recommended</p>
+      </div>
+    </div>
+  `;
+
+  const tplSel = body.querySelector('[name=template_id]');
+  if (tplSel) {
+    tplSel.addEventListener('change', () => {
+      body.querySelector('#blank-fields').style.opacity = tplSel.value ? '0.4' : '1';
+    });
+  }
+
+  showModal({
+    heading: 'Add Server',
+    content: body,
+    buttons: [
+      { label: 'Cancel', cls: 'btn-ghost', onClick: c => c() },
+      { label: 'Create', cls: 'btn-primary', onClick: async (close) => {
+        const name       = body.querySelector('[name=name]').value.trim();
+        const templateId = body.querySelector('[name=template_id]')?.value || '';
+        const type       = body.querySelector('[name=type]')?.value || 'custom';
+        const memoryMb   = parseInt(body.querySelector('[name=memory_mb]')?.value) || 1024;
+
+        if (!name) { body.querySelector('[name=name]').focus(); return; }
+
+        try {
+          if (templateId) {
+            await templates.deploy(templateId, { network_id: networkId, name });
+          } else {
+            await servers.create({ network_id: networkId, name, type, memory_mb: memoryMb });
+          }
+          toastSuccess(`Server "${name}" created`);
+          close();
+          onDone();
+        } catch (e) { toastError(e.message); }
+      }},
+    ],
   });
 }
 
@@ -864,4 +932,257 @@ function fmFmtSize(bytes) {
   if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
   if (bytes >= 1e3) return (bytes / 1e3).toFixed(0) + ' KB';
   return bytes + ' B';
+}
+
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+
+async function initScheduler(network) {
+  const host = document.getElementById('scheduler-host');
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="page-header" style="margin-bottom:14px">
+      <div class="card-title">Scheduled Tasks</div>
+      ${isAdmin() ? `<button class="btn btn-sm btn-primary" id="sched-add">+ Add Task</button>` : ''}
+    </div>
+    <div id="sched-list"></div>
+  `;
+
+  if (isAdmin()) {
+    host.querySelector('#sched-add').addEventListener('click', () => showAddTaskModal(network, () => initScheduler(network)));
+  }
+
+  await loadSchedulerTasks(host.querySelector('#sched-list'), network);
+}
+
+async function loadSchedulerTasks(listEl, network) {
+  if (!listEl) return;
+  listEl.innerHTML = `<div class="loading-splash" style="height:60px"><div class="spinner"></div></div>`;
+
+  try {
+    const tasks = await scheduler.listTasks({ network_id: network.id });
+
+    // Also load server-level tasks
+    const serverTasks = [];
+    for (const s of network.servers || []) {
+      const st = await scheduler.listTasks({ server_id: s.id });
+      st.forEach(t => serverTasks.push({ ...t, _serverName: s.name }));
+    }
+    const allTasks = [...tasks, ...serverTasks];
+
+    if (!allTasks.length) {
+      listEl.innerHTML = `<div class="empty-state"><p>No scheduled tasks yet.</p></div>`;
+      return;
+    }
+
+    listEl.innerHTML = `<div class="servers-list">${allTasks.map(t => `
+      <div class="server-card" style="cursor:default">
+        <div class="server-info">
+          <div class="server-name">${escHtml(t.label || 'Unnamed task')}</div>
+          <div class="server-sub">
+            ${t._serverName ? escHtml(t._serverName) + ' · ' : 'Network · '}
+            ${t.action === 'restart' ? '🔄 Restart' : `💬 ${escHtml(t.command)}`}
+            · <code class="text-mono" style="font-size:.78rem">${escHtml(t.cron_expr)}</code>
+          </div>
+        </div>
+        <div class="server-actions">
+          <span class="status-badge status-${t.enabled ? 'running' : 'stopped'}">${t.enabled ? 'enabled' : 'disabled'}</span>
+          ${isAdmin() ? `
+            <button class="btn btn-sm btn-ghost" data-task-toggle="${t.id}">${t.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="btn btn-sm btn-danger" data-task-del="${t.id}">✕</button>
+          ` : ''}
+        </div>
+      </div>`).join('')}
+    </div>`;
+
+    listEl.querySelectorAll('[data-task-toggle]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await scheduler.toggleTask(btn.dataset.taskToggle);
+          toastSuccess('Task updated');
+          loadSchedulerTasks(listEl, network);
+        } catch (e) { toastError(e.message); }
+      });
+    });
+
+    listEl.querySelectorAll('[data-task-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        confirm('Delete this scheduled task?', async () => {
+          try {
+            await scheduler.deleteTask(btn.dataset.taskDel);
+            toastSuccess('Task deleted');
+            loadSchedulerTasks(listEl, network);
+          } catch (e) { toastError(e.message); }
+        }, { danger: true });
+      });
+    });
+  } catch (e) {
+    listEl.innerHTML = `<p class="text-muted">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+function showAddTaskModal(network, onDone) {
+  const allTargets = [
+    { value: `network:${network.id}`, label: `🌐 ${network.name} (BungeeCord)` },
+    ...(network.servers || []).map(s => ({ value: `server:${s.id}`, label: `${TYPE_ICONS[s.type]||'⚙️'} ${s.name}` })),
+  ];
+
+  const body = document.createElement('div');
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
+  body.style.gap = '14px';
+
+  body.innerHTML = `
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Label</label>
+      <input class="form-input" name="label" placeholder="Daily restart" />
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Target</label>
+      <select class="form-select" name="target">
+        ${allTargets.map(t => `<option value="${t.value}">${escHtml(t.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Action</label>
+      <select class="form-select" name="action">
+        <option value="restart">Restart</option>
+        <option value="command">Run console command</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0" id="cmd-group" style="display:none">
+      <label class="form-label">Command</label>
+      <input class="form-input" name="command" placeholder="say Server restart in 5 minutes" />
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Cron expression <span style="color:var(--red)">*</span></label>
+      <input class="form-input" name="cron_expr" placeholder="0 4 * * *" required />
+      <p class="form-hint">UTC time. Example: <code>0 4 * * *</code> = every day at 04:00 UTC</p>
+    </div>
+  `;
+
+  const actionSel = body.querySelector('[name=action]');
+  const cmdGroup  = body.querySelector('#cmd-group');
+  actionSel.addEventListener('change', () => {
+    cmdGroup.style.display = actionSel.value === 'command' ? '' : 'none';
+  });
+
+  showModal({
+    heading: 'Add Scheduled Task',
+    content: body,
+    buttons: [
+      { label: 'Cancel', cls: 'btn-ghost', onClick: c => c() },
+      { label: 'Save', cls: 'btn-primary', onClick: async (close) => {
+        const label     = body.querySelector('[name=label]').value.trim();
+        const target    = body.querySelector('[name=target]').value;
+        const action    = body.querySelector('[name=action]').value;
+        const command   = body.querySelector('[name=command]').value.trim();
+        const cronExpr  = body.querySelector('[name=cron_expr]').value.trim();
+
+        const [targetType, targetId] = target.split(':');
+
+        try {
+          await scheduler.createTask({
+            network_id: targetType === 'network' ? targetId : null,
+            server_id:  targetType === 'server'  ? targetId : null,
+            action,
+            command,
+            cron_expr: cronExpr,
+            label,
+          });
+          toastSuccess('Task created');
+          close();
+          onDone();
+        } catch (e) { toastError(e.message); }
+      }},
+    ],
+  });
+}
+
+// ─── World Backups ────────────────────────────────────────────────────────────
+
+function showBackupsModal(serverId, serverName) {
+  const host = document.createElement('div');
+  host.innerHTML = `<div class="loading-splash" style="height:80px"><div class="spinner"></div></div>`;
+
+  showModal({
+    heading: `Backups — ${serverName}`,
+    content: host,
+    buttons: [{ label: 'Close', cls: 'btn-ghost', onClick: c => c() }],
+  });
+  document.getElementById('modal-box').style.maxWidth = '600px';
+
+  loadBackups(host, serverId);
+}
+
+async function loadBackups(host, serverId) {
+  try {
+    const backups = await servers.backups.list(serverId);
+
+    host.innerHTML = `
+      <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center">
+        ${isAdmin() ? `<button class="btn btn-sm btn-primary" id="btn-create-backup">⬆ Create Backup</button>` : ''}
+        <span class="text-muted text-sm">${backups.length} backup${backups.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${backups.length === 0 ? `<div class="empty-state"><p>No backups yet.</p></div>` :
+        `<div class="servers-list">${backups.map(b => `
+          <div class="server-card" style="cursor:default">
+            <div class="server-info">
+              <div class="server-name text-mono" style="font-size:.8rem">${escHtml(b.file_name)}</div>
+              <div class="server-sub">${fmFmtSize(b.size_bytes)} · ${new Date(b.created_at * 1000).toLocaleString()}</div>
+            </div>
+            <div class="server-actions">
+              <a class="btn btn-sm btn-ghost" href="${servers.backups.download(serverId, b.id)}" download="${escHtml(b.file_name)}">⬇ Download</a>
+              ${isAdmin() ? `<button class="btn btn-sm btn-danger" data-del-backup="${b.id}">✕</button>` : ''}
+            </div>
+          </div>`).join('')}
+        </div>`}
+    `;
+
+    if (isAdmin()) {
+      host.querySelector('#btn-create-backup')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Creating…';
+        try {
+          await servers.backups.create(serverId);
+          toastSuccess('Backup created');
+          loadBackups(host, serverId);
+        } catch (err) {
+          toastError(err.message);
+          btn.disabled = false;
+          btn.textContent = '⬆ Create Backup';
+        }
+      });
+
+      host.querySelectorAll('[data-del-backup]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          confirm('Delete this backup?', async () => {
+            try {
+              await servers.backups.delete(serverId, btn.dataset.delBackup);
+              toastSuccess('Backup deleted');
+              loadBackups(host, serverId);
+            } catch (e) { toastError(e.message); }
+          }, { danger: true });
+        });
+      });
+    }
+  } catch (e) {
+    host.innerHTML = `<p class="text-muted">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+function showSaveTemplateModal(serverId, serverName) {
+  prompt('Save as Template', [
+    { name: 'name', label: 'Template name', placeholder: `${serverName}-template`, required: true },
+    { name: 'description', label: 'Description (optional)', placeholder: 'My server configuration' },
+  ], async (data, close) => {
+    try {
+      await templates.create({ server_id: serverId, name: data.name, description: data.description });
+      toastSuccess(`Template "${data.name}" saved`);
+      close();
+    } catch (e) { toastError(e.message); }
+  });
 }

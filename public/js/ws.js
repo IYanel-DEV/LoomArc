@@ -7,7 +7,7 @@
  *   ws.unsubscribe('bungee-<id>');
  */
 
-import { getApiKey } from './api.js';
+import { getToken } from './api.js';
 
 class WsClient {
   constructor() {
@@ -19,9 +19,9 @@ class WsClient {
   }
 
   connect() {
-    const key = getApiKey();
+    const token = getToken();
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url   = `${proto}://${location.host}/ws?key=${encodeURIComponent(key)}`;
+    const url   = `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`;
 
     this._socket = new WebSocket(url);
 

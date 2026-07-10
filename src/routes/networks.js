@@ -43,11 +43,13 @@ router.post('/',
   body('name').trim().notEmpty().withMessage('name is required')
     .matches(/^[a-zA-Z0-9_-]+$/).withMessage('name may only contain letters, numbers, - and _'),
   body('description').optional().trim(),
+  body('mc_version').optional().trim(),
+  body('mc_build').optional(),
   validate,
   async (req, res) => {
     try {
-      // networkManager.create() fires provisioner.provision() internally (non-blocking)
-      const network = await networkManager.create(req.body.name, req.body.description);
+      const { name, description, mc_version, mc_build } = req.body;
+      const network = await networkManager.create(name, description, { mcVersion: mc_version, mcBuild: mc_build });
       const provState = provisioner.getState(network.id);
       res.status(201).json({
         ...network,

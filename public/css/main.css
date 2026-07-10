@@ -1074,3 +1074,110 @@ input, select, textarea { font: inherit; }
   .telemetry-row { flex-direction: column; align-items: flex-start; }
   .telemetry-charts { gap: 12px; }
 }
+
+/* ── Login page ─────────────────────────────────────────────────────────────── */
+/* Remove main-content padding so the login card can center in the full viewport */
+#sidebar[style*="display: none"] ~ .main-content {
+  padding: 0;
+}
+
+.login-wrap {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: var(--shadow-lg);
+}
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-bright);
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 22px;
+}
+.login-logo svg { filter: drop-shadow(0 0 8px var(--accent-glow-md)); }
+.login-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+.login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-error {
+  background: rgba(239,68,68,.12);
+  border: 1px solid rgba(239,68,68,.35);
+  border-radius: var(--radius);
+  color: var(--red);
+  font-size: .83rem;
+  padding: 8px 12px;
+}
+
+/* ── User chip (sidebar footer) ─────────────────────────────────────────────── */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  margin-bottom: 8px;
+  font-size: .8rem;
+  flex-wrap: wrap;
+}
+.user-chip-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-badge {
+  font-size: .65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.role-badge.role-admin  { background: rgba(124,58,237,.2); color: var(--accent-bright); }
+.role-badge.role-viewer { background: rgba(6,182,212,.15);  color: var(--cyan); }
+.user-mgmt-btn { font-size: .72rem; padding: 2px 6px; }
+
+/* ── btn-xs ──────────────────────────────────────────────────────────────────  */
+.btn-xs {
+  padding: 2px 8px;
+  font-size: .72rem;
+  border-radius: 4px;
+}
+
+/* ── Scheduler tasks ─────────────────────────────────────────────────────────  */
+.task-cron {
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+
+/* ── Backup list spacing ─────────────────────────────────────────────────────  */
+.backup-row a { text-decoration: none; }
+
+/* ── Version picker loading state ────────────────────────────────────────────  */
+select[name="mc_version"]:disabled,
+select[name="mc_build"]:disabled {
+  opacity: 0.5;
+}

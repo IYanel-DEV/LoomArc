@@ -9,6 +9,8 @@ const config            = require('./config');
 const logger            = require('./utils/logger');
 const processManager    = require('./managers/ProcessManager');
 const telemetryManager  = require('./managers/TelemetryManager');
+const authManager       = require('./managers/AuthManager');
+const schedulerManager  = require('./managers/SchedulerManager');
 
 // ─── Express app ──────────────────────────────────────────────────────────────
 
@@ -19,37 +21,48 @@ app.use(express.urlencoded({ extended: false }));
 // Serve the SPA
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// ─── Auth middleware (simple API key) ─────────────────────────────────────────
-// The panel UI obtains the key from /api/session after loading;
-// external API callers must send x-api-key header.
+// ─── JWT auth middleware ───────────────────────────────────────────────────────
+// Extracts Bearer token from Authorization header OR ?token= query param
+// (EventSource / WebSocket cannot send custom headers).
 
 function authMiddleware(req, res, next) {
-  if (req.path === '/api/session') return next();
+  // Public routes: login, setup, and the legacy /api/session compatibility stub
+  const pub = ['/auth/login', '/auth/setup', '/session'];
+  if (pub.some(p => req.path === p || req.path.startsWith(p))) return next();
 
-  // Accept key from header (normal API calls) OR query string (EventSource — browsers
-  // cannot set custom headers on EventSource so we fall back to ?key=…).
-  const key = req.headers['x-api-key'] || req.query.key;
-  if (!key || key !== config.apiSecret) {
-    return res.status(401).json({ error: 'Unauthorised — missing or invalid x-api-key' });
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : req.query.token || '';
+
+  const payload = authManager.verifyToken(token);
+  if (!payload) {
+    return res.status(401).json({ error: 'Unauthorised — invalid or missing token' });
   }
+  req.user = payload;
   next();
 }
 
-// Expose the key to the browser once so the frontend can use it for API calls.
-// This is intentional: the panel is self-hosted, single-user.
+// Backward-compat stub — tells old clients to log in
 app.get('/api/session', (req, res) => {
-  res.json({ apiKey: config.apiSecret });
+  res.json({ requiresLogin: true, hasUsers: authManager.hasUsers() });
 });
 
 app.use('/api', authMiddleware);
 
 // ─── Route mounting ───────────────────────────────────────────────────────────
 
+app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/networks',  require('./routes/networks'));
 app.use('/api/servers',   require('./routes/servers'));
 app.use('/api/plugins',   require('./routes/plugins'));
 app.use('/api/system',    require('./routes/system'));
 app.use('/api/telemetry', require('./routes/telemetry'));
+app.use('/api/scheduler', require('./routes/scheduler'));
+app.use('/api/templates', require('./routes/templates'));
+
+// Backup routes nested under /api/servers/:id/backups (mergeParams:true in the router)
+app.use('/api/servers/:id/backups', require('./routes/backups'));
 
 // Catch-all — serve the SPA for client-side routing
 app.get('*', (req, res) => {
@@ -65,9 +78,11 @@ const wss    = new WebSocketServer({ server, path: '/ws' });
 const clients = new Map(); // ws → Set<processId>
 
 wss.on('connection', (ws, req) => {
-  // Validate API key from query string
+  // Validate JWT from query string (browsers can't set custom headers on WS)
   const urlParams = new URLSearchParams(req.url.replace('/ws', '').replace('?', ''));
-  if (urlParams.get('key') !== config.apiSecret) {
+  const token   = urlParams.get('token') || '';
+  const payload = authManager.verifyToken(token);
+  if (!payload) {
     ws.close(4401, 'Unauthorised');
     return;
   }
@@ -188,6 +203,8 @@ function killOrphan(pid) {
 })();
 
 // ─── Startup ──────────────────────────────────────────────────────────────────
+
+schedulerManager.init();
 
 server.listen(config.panel.port, config.panel.host, () => {
   logger.info(`LoomArc panel listening on http://${config.panel.host}:${config.panel.port}`);

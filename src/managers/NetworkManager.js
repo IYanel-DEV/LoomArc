@@ -15,7 +15,7 @@ const provisioner    = require('./Provisioner');
 class NetworkManager {
   // ─── CRUD ──────────────────────────────────────────────────────────────────
 
-  async create(name, description = '') {
+  async create(name, description = '', provisionOpts = {}) {
     if (db.get('SELECT id FROM networks WHERE name = ?', [name])) {
       throw new Error(`Network "${name}" already exists`);
     }
@@ -39,7 +39,7 @@ class NetworkManager {
 
     // Kick off JAR download + folder provisioning in the background.
     // The caller can stream progress via GET /api/networks/:id/provision (SSE).
-    provisioner.provision(id);
+    provisioner.provision(id, provisionOpts);
 
     return this.get(id);
   }

@@ -13,6 +13,7 @@ const processManager = require('../managers/ProcessManager');
 const portAlloc      = require('../managers/PortAllocator');
 const javaDetector   = require('../utils/javaDetector');
 const fsu            = require('../utils/fileSystem');
+const downloader     = require('../managers/JarDownloader');
 
 // ─── OS metrics helpers ───────────────────────────────────────────────────────
 
@@ -170,6 +171,28 @@ router.post('/jars/:id/link-to-network', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
+  }
+});
+
+// ─── Purpur (Paper-compatible) version/build browser ─────────────────────────
+
+// GET /api/system/paper/versions  — list available MC versions from Purpur API
+router.get('/paper/versions', async (req, res) => {
+  try {
+    const versions = await downloader.getPurpurVersions();
+    res.json({ versions });
+  } catch (e) {
+    res.status(502).json({ error: `Could not fetch versions: ${e.message}` });
+  }
+});
+
+// GET /api/system/paper/versions/:version/builds  — list builds for a version
+router.get('/paper/versions/:version/builds', async (req, res) => {
+  try {
+    const data = await downloader.getPurpurBuilds(req.params.version);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: `Could not fetch builds: ${e.message}` });
   }
 });
 

@@ -132,6 +132,8 @@ function createDirectories() {
     'public/js/components',
     'data/servers',
     'data/jars',
+    'data/backups',
+    'data/tmp',
     'logs',
   ];
 
@@ -174,7 +176,7 @@ function setupEnv(detectedJava) {
 
 // ─── Database initialisation ──────────────────────────────────────────────────
 function initDatabase() {
-  console.log(`\n${c.bold}[5/5] Initialising database${c.reset}`);
+  console.log(`\n${c.bold}[5/5] Initialising database + default admin user${c.reset}`);
 
   // Load env so the DB module can find DATA_DIR
   require('dotenv').config({ path: path.join(ROOT, '.env') });
@@ -182,6 +184,25 @@ function initDatabase() {
   try {
     const db = require('./src/database/index');
     ok('SQLite database initialised');
+
+    // Create default admin if no users exist yet
+    const existing = db.prepare('SELECT 1 FROM users LIMIT 1').get();
+    if (!existing) {
+      const username = process.env.ADMIN_USER     || 'admin';
+      const password = process.env.ADMIN_PASSWORD || 'changeme123';
+
+      const bcrypt = require('bcryptjs');
+      const { v4: uuid } = require('uuid');
+      const hash = bcrypt.hashSync(password, 12);
+      db.prepare('INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)')
+        .run(uuid(), username, hash, 'admin');
+
+      ok(`Default admin user created: ${c.cyan}${username}${c.reset} / ${c.yellow}${password}${c.reset}`);
+      info(`Change the password after first login, or set ADMIN_PASSWORD in .env before running setup again.`);
+    } else {
+      ok('Admin user already exists — skipping');
+    }
+
     db.close();
   } catch (e) {
     err(`Database init failed: ${e.message}`);
@@ -212,8 +233,8 @@ ${c.bold}Next steps:${c.reset}
 
   4. Open ${c.cyan}http://localhost:3000${c.reset} in your browser.
 
-${c.yellow}Note:${c.reset} The API_SECRET in .env is required as the ${c.cyan}x-api-key${c.reset} header
-for all API requests. The frontend reads it from /api/session automatically.
+${c.yellow}Note:${c.reset} Log in with the admin credentials shown above.
+Change your password at ${c.cyan}Settings → Users${c.reset} after first login.
 
 ${'─'.repeat(55)}
 `);

@@ -192,10 +192,49 @@ async function getLatestPaperMeta() {
   return getLatestPurpurMeta();
 }
 
+/**
+ * Returns the list of available Minecraft versions from Purpur.
+ * Result: string[] newest first, e.g. ['1.21.1', '1.21', '1.20.6', ...]
+ */
+async function getPurpurVersions() {
+  const info = await fetchJson('https://api.purpurmc.org/v2/purpur');
+  return (info.versions ?? [])
+    .filter(v => /^1\.\d+(\.\d+)?$/.test(v))
+    .reverse();
+}
+
+/**
+ * Returns available builds for a given Minecraft version.
+ * Result: { version, builds: number[] } newest-build first.
+ */
+async function getPurpurBuilds(version) {
+  const info = await fetchJson(`https://api.purpurmc.org/v2/purpur/${encodeURIComponent(version)}`);
+  const builds = (info.builds?.all ?? []).map(Number).sort((a, b) => b - a);
+  return { version, builds };
+}
+
+/**
+ * Returns metadata for a specific Purpur version+build.
+ * If build is omitted, uses the latest build.
+ */
+async function getPurpurMeta(version, build) {
+  if (!build) {
+    const vInfo = await fetchJson(`https://api.purpurmc.org/v2/purpur/${encodeURIComponent(version)}`);
+    build = vInfo.builds?.latest;
+    if (!build) throw new Error(`No builds found for Purpur ${version}`);
+  }
+  const downloadUrl = `https://api.purpurmc.org/v2/purpur/${version}/${build}/download`;
+  const fileName    = `purpur-${version}-${build}.jar`;
+  return { project: 'purpur', version, build, fileName, downloadUrl };
+}
+
 module.exports = {
   downloadFile,
   fetchJson,
   getLatestWaterfallMeta,
   getLatestPaperMeta,
+  getPurpurVersions,
+  getPurpurBuilds,
+  getPurpurMeta,
   BUNGEE_JAR_URL,
 };

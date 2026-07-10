@@ -40,9 +40,11 @@ class Provisioner extends EventEmitter {
 
   /**
    * Start provisioning for a freshly created network.
+   * @param {string} networkId
+   * @param {{ mcVersion?: string, mcBuild?: string|number }} [opts]
    * Non-blocking — returns the initial state object immediately.
    */
-  provision(networkId) {
+  provision(networkId, opts = {}) {
     const existing = this._states.get(networkId);
     if (existing && !existing.error) return existing; // already running / done
 
@@ -56,7 +58,7 @@ class Provisioner extends EventEmitter {
     };
     this._states.set(networkId, state);
 
-    this._run(networkId, state).catch((err) => {
+    this._run(networkId, state, opts).catch((err) => {
       logger.error(`[Provisioner] ${networkId}: ${err.message}`);
       this._update(state, {
         step:    'error',
@@ -92,7 +94,7 @@ class Provisioner extends EventEmitter {
 
   // ── Private ─────────────────────────────────────────────────────────────────
 
-  async _run(networkId, state) {
+  async _run(networkId, state, opts = {}) {
     const jarsDir = path.join(config.dataDir, 'jars');
     await fsu.ensureDir(jarsDir);
 
@@ -111,13 +113,18 @@ class Provisioner extends EventEmitter {
     // ── 2 · Paper backend JAR ─────────────────────────────────────────────────
     this._update(state, { step: 'paper-check', message: 'Checking Paper jar cache…', percent: 44 });
 
-    let paperJarPath = this._findCached('spigot', jarsDir);
-
-    if (!paperJarPath) {
-      paperJarPath = await this._downloadPaper(state, jarsDir);
+    // If user specified a version, always download that specific build
+    let paperJarPath = null;
+    if (opts.mcVersion) {
+      paperJarPath = await this._downloadPaper(state, jarsDir, opts.mcVersion, opts.mcBuild);
     } else {
-      const name = path.basename(paperJarPath);
-      this._update(state, { message: `Paper jar found in cache (${name}) ✓`, percent: 82 });
+      paperJarPath = this._findCached('spigot', jarsDir);
+      if (!paperJarPath) {
+        paperJarPath = await this._downloadPaper(state, jarsDir);
+      } else {
+        const name = path.basename(paperJarPath);
+        this._update(state, { message: `Paper jar found in cache (${name}) ✓`, percent: 82 });
+      }
     }
 
     // ── 3 · Provision network directory ───────────────────────────────────────
@@ -192,14 +199,15 @@ class Provisioner extends EventEmitter {
     }
   }
 
-  async _downloadPaper(state, jarsDir) {
-    // getLatestPaperMeta() now delegates to Purpur (Paper API v2 is sunset,
-    // v3 requires OAuth). Purpur is 100% Paper-plugin-compatible.
-    this._update(state, { step: 'paper-meta', message: 'Fetching latest Purpur (Paper-compatible) version…', percent: 46 });
+  async _downloadPaper(state, jarsDir, mcVersion, mcBuild) {
+    const versionLabel = mcVersion ? `Purpur ${mcVersion}` : 'latest Purpur (Paper-compatible)';
+    this._update(state, { step: 'paper-meta', message: `Fetching ${versionLabel} version…`, percent: 46 });
 
     let meta;
     try {
-      meta = await downloader.getLatestPaperMeta(); // → getLatestPurpurMeta()
+      meta = mcVersion
+        ? await downloader.getPurpurMeta(mcVersion, mcBuild || null)
+        : await downloader.getLatestPaperMeta(); // → getLatestPurpurMeta()
     } catch (apiErr) {
       logger.warn(`[Provisioner] Server JAR API unreachable: ${apiErr.message}`);
       this._update(state, {

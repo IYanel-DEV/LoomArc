@@ -105,10 +105,10 @@ export class TelemetryMonitor {
    * @param {Map<string,{name,label}>} processMap - processId → display meta
    * @param {string} apiKey
    */
-  constructor(host, processMap, apiKey) {
+  constructor(host, processMap, token) {
     this._host       = host;
     this._processMap = processMap;
-    this._apiKey     = apiKey;
+    this._apiKey     = token; // kept as _apiKey internally for minimal diff
     this._charts     = new Map();  // processId → { cpu: SparkLine, mem: SparkLine }
     this._sse        = null;
     this._dead       = false;
@@ -163,7 +163,7 @@ export class TelemetryMonitor {
   }
 
   _openSSE() {
-    const url    = `/api/telemetry/stream?key=${encodeURIComponent(this._apiKey)}`;
+    const url    = `/api/telemetry/stream?token=${encodeURIComponent(this._apiKey)}`;
     const source = new EventSource(url);
     this._sse    = source;
 
@@ -189,7 +189,7 @@ export class TelemetryMonitor {
     try {
       const res = await fetch(
         `/api/telemetry/${encodeURIComponent(processId)}/history?n=60`,
-        { headers: { 'x-api-key': this._apiKey } }
+        { headers: { 'Authorization': `Bearer ${this._apiKey}` } }
       );
       if (!res.ok) return;
       const { cpu, mem } = await res.json();

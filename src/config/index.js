@@ -24,6 +24,8 @@ module.exports = {
 
   apiSecret: process.env.API_SECRET || 'dev_secret',
 
+  jwtSecret: process.env.JWT_SECRET || process.env.API_SECRET || 'dev_jwt_secret',
+
   dataDir: process.env.DATA_DIR
     ? path.resolve(process.env.DATA_DIR)
     : path.join(ROOT, 'data'),

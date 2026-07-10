@@ -1,23 +1,41 @@
-/** Central API client — auto-injects x-api-key from session. */
+/** Central API client — JWT Bearer token authentication. */
 
-let _apiKey = null;
+let _token   = null;
+let _session = null; // { id, username, role }
 
-export async function initApi() {
-  const res = await fetch('/api/session');
-  const data = await res.json();
-  _apiKey = data.apiKey;
+export async function initApi(token) {
+  _token = token;
+  const res = await fetch('/api/auth/me', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Invalid or expired session — please log in again.');
+  _session = await res.json();
 }
 
-async function request(method, path, body) {
+export function getToken()   { return _token; }
+export function getSession() { return _session; }
+export function isAdmin()    { return _session?.role === 'admin'; }
+
+async function request(method, path, body, isFormData = false) {
+  const headers = {
+    'Authorization': `Bearer ${_token}`,
+  };
+  if (body && !isFormData) headers['Content-Type'] = 'application/json';
+
   const opts = {
     method,
-    headers: {
-      'x-api-key': _apiKey,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
+    headers,
+    ...(body ? { body: isFormData ? body : JSON.stringify(body) } : {}),
   };
+
   const res = await fetch(`/api${path}`, opts);
+
+  if (res.status === 401) {
+    localStorage.removeItem('loomarc-jwt');
+    location.reload();
+    throw new Error('Session expired — please log in again.');
+  }
+
   if (res.status === 204) return null;
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -29,6 +47,39 @@ const post   = (path, body)  => request('POST',   path, body);
 const patch  = (path, body)  => request('PATCH',  path, body);
 const put    = (path, body)  => request('PUT',    path, body);
 const del    = (path)        => request('DELETE', path);
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export const auth = {
+  login:       (username, password) => {
+    return fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    });
+  },
+  setup:       (username, password) => {
+    return fetch('/api/auth/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    });
+  },
+  me:          ()              => get('/auth/me'),
+  users:       {
+    list:    ()              => get('/auth/users'),
+    create:  (data)          => post('/auth/users', data),
+    update:  (id, data)      => patch(`/auth/users/${id}`, data),
+    delete:  (id)            => del(`/auth/users/${id}`),
+  },
+};
 
 // ── Networks ──────────────────────────────────────────────────────────────────
 export const networks = {
@@ -75,8 +126,8 @@ export const servers = {
   plugins:     (id)            => get(`/servers/${id}/plugins`),
   installPlugin: (id, data)    => post(`/servers/${id}/plugins/install-spiget`, data),
   removePlugin:  (sid, pid)    => del(`/servers/${sid}/plugins/${pid}`),
-  pluginsLocal: (id)           => get(`/servers/${id}/plugins/local`),
-  togglePlugin: (id, fileName) => post(`/servers/${id}/plugins/toggle`, { file_name: fileName }),
+  pluginsLocal:  (id)          => get(`/servers/${id}/plugins/local`),
+  togglePlugin:  (id, fileName) => post(`/servers/${id}/plugins/toggle`, { file_name: fileName }),
   listFiles:   (id)            => get(`/servers/${id}/files`),
   readFile:    (id, p)         => get(`/servers/${id}/files/read?path=${encodeURIComponent(p)}`),
   writeFile:   (id, p, content) => put(`/servers/${id}/files`, { path: p, content }),
@@ -88,13 +139,41 @@ export const servers = {
     remove: (id, p)          => del(`/servers/${id}/fs?path=${encodeURIComponent(p)}`),
     rename: (id, from, to)   => post(`/servers/${id}/fs/rename`, { from, to }),
   },
+  backups: {
+    list:     (id)      => get(`/servers/${id}/backups`),
+    create:   (id)      => post(`/servers/${id}/backups`),
+    download: (id, bid) => `${location.origin}/api/servers/${id}/backups/${bid}/download?token=${encodeURIComponent(_token)}`,
+    delete:   (id, bid) => del(`/servers/${id}/backups/${bid}`),
+  },
 };
 
 // ── Plugin search ─────────────────────────────────────────────────────────────
 export const plugins = {
-  search:   (q, params = {})   => get(`/plugins/search?q=${encodeURIComponent(q)}&size=${params.size||10}&page=${params.page||1}&sort=${params.sort||'-downloads'}`),
-  resource: (spigetId)         => get(`/plugins/resource/${spigetId}`),
-  versions: (spigetId)         => get(`/plugins/resource/${spigetId}/versions`),
+  search:   (q, params = {}) =>
+    get(`/plugins/search?q=${encodeURIComponent(q)}&size=${params.size||10}&page=${params.page||1}&sort=${params.sort||'-downloads'}`),
+  resource: (spigetId)       => get(`/plugins/resource/${spigetId}`),
+  versions: (spigetId)       => get(`/plugins/resource/${spigetId}/versions`),
+};
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+export const scheduler = {
+  listTasks:   (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return get(`/scheduler/tasks${qs ? '?' + qs : ''}`);
+  },
+  createTask:  (data)        => post('/scheduler/tasks', data),
+  updateTask:  (id, data)    => patch(`/scheduler/tasks/${id}`, data),
+  toggleTask:  (id)          => post(`/scheduler/tasks/${id}/toggle`),
+  deleteTask:  (id)          => del(`/scheduler/tasks/${id}`),
+};
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+export const templates = {
+  list:   ()              => get('/templates'),
+  get:    (id)            => get(`/templates/${id}`),
+  create: (data)          => post('/templates', data),
+  delete: (id)            => del(`/templates/${id}`),
+  deploy: (id, data)      => post(`/templates/${id}/deploy`, data),
 };
 
 // ── System ────────────────────────────────────────────────────────────────────
@@ -108,6 +187,12 @@ export const system = {
     linkToServer:  (id, sid)    => post(`/system/jars/${id}/link-to-server`,  { server_id: sid }),
     linkToNetwork: (id, nid)    => post(`/system/jars/${id}/link-to-network`, { network_id: nid }),
   },
+  paper: {
+    versions: ()        => get('/system/paper/versions'),
+    builds:   (version) => get(`/system/paper/versions/${encodeURIComponent(version)}/builds`),
+  },
 };
 
-export function getApiKey() { return _apiKey; }
+// ── Deprecated ────────────────────────────────────────────────────────────────
+/** @deprecated Use getToken() */
+export function getApiKey() { return _token; }

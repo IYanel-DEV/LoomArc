@@ -1,5 +1,4 @@
-import { networks } from '../api.js';
-import { getApiKey } from '../api.js';
+import { networks, templates, system, isAdmin, getToken } from '../api.js';
 import { toastSuccess, toastError } from '../components/toast.js';
 import { prompt, confirm, showModal } from '../components/modal.js';
 
@@ -147,8 +146,7 @@ async function loadNetworks() {
 function attachProvisionSSE(networkId) {
   if (_sseSources.has(networkId)) return; // already attached
 
-  const key = getApiKey();
-  const url = `/api/networks/${networkId}/provision?key=${encodeURIComponent(key)}`;
+  const url = `/api/networks/${networkId}/provision?token=${encodeURIComponent(getToken())}`;
   const source = new EventSource(url);
   _sseSources.set(networkId, source);
 
@@ -230,9 +228,8 @@ function showProvisionModal(network, initialState) {
     return;
   }
 
-  const key = getApiKey();
   source = new EventSource(
-    `/api/networks/${network.id}/provision?key=${encodeURIComponent(key)}`
+    `/api/networks/${network.id}/provision?token=${encodeURIComponent(getToken())}`
   );
 
   source.onmessage = (e) => {
@@ -340,31 +337,91 @@ async function handleAction(action, id) {
   }
 }
 
-function showCreateNetwork() {
-  prompt('Create Network', [
-    {
-      name: 'name', label: 'Network name', placeholder: 'my-network', required: true,
-      hint: 'Letters, numbers, hyphens and underscores only.',
-    },
-    {
-      name: 'description', label: 'Description (optional)',
-      placeholder: 'My awesome Minecraft network',
-    },
-  ], async (data, close) => {
-    try {
-      const network = await networks.create(data);
-      close();
-      toastSuccess(`Network "${network.name}" created`);
+async function showCreateNetwork() {
+  // Build the modal manually so we can include a dynamic version picker
+  const body = document.createElement('div');
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
+  body.style.gap = '14px';
 
-      // Immediately update the grid with a provisioning card
-      await loadNetworks();
+  body.innerHTML = `
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Network name <span style="color:var(--red)">*</span></label>
+      <input class="form-input" name="name" placeholder="my-network" required
+        pattern="[a-zA-Z0-9_-]+" title="Letters, numbers, hyphens and underscores only" />
+      <p class="form-hint">Letters, numbers, hyphens and underscores only.</p>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Description (optional)</label>
+      <input class="form-input" name="description" placeholder="My awesome Minecraft network" />
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Minecraft version</label>
+      <select class="form-select" name="mc_version" id="mc-version-sel">
+        <option value="">Latest (recommended)</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0" id="mc-build-group" style="display:none">
+      <label class="form-label">Build</label>
+      <select class="form-select" name="mc_build" id="mc-build-sel">
+        <option value="">Latest build</option>
+      </select>
+    </div>
+  `;
 
-      // Open the live provisioning progress modal
-      const provState = network.provisioning;
-      showProvisionModal(network, provState);
+  // Populate versions async (non-blocking — failure just leaves the dropdown on "Latest")
+  system.paper.versions().then(({ versions }) => {
+    const sel = body.querySelector('#mc-version-sel');
+    if (!sel) return;
+    versions.slice(0, 20).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      sel.appendChild(opt);
+    });
 
-    } catch (e) {
-      toastError(e.message);
-    }
+    sel.addEventListener('change', async () => {
+      const buildSel  = body.querySelector('#mc-build-sel');
+      const buildGroup = body.querySelector('#mc-build-group');
+      buildSel.innerHTML = '<option value="">Latest build</option>';
+      if (!sel.value) { buildGroup.style.display = 'none'; return; }
+
+      buildGroup.style.display = '';
+      try {
+        const data = await system.paper.builds(sel.value);
+        data.builds.slice(0, 30).forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b;
+          opt.textContent = `Build #${b}`;
+          buildSel.appendChild(opt);
+        });
+      } catch {}
+    });
+  }).catch(() => {}); // silently ignore if Purpur API unreachable
+
+  showModal({
+    heading: 'Create Network',
+    content: body,
+    buttons: [
+      { label: 'Cancel', cls: 'btn-ghost', onClick: c => c() },
+      { label: 'Create', cls: 'btn-primary', onClick: async (close) => {
+        const name        = body.querySelector('[name=name]').value.trim();
+        const description = body.querySelector('[name=description]').value.trim();
+        const mc_version  = body.querySelector('[name=mc_version]').value;
+        const mc_build    = body.querySelector('[name=mc_build]').value;
+
+        if (!name) { body.querySelector('[name=name]').focus(); return; }
+
+        try {
+          const network = await networks.create({ name, description, mc_version: mc_version || undefined, mc_build: mc_build || undefined });
+          close();
+          toastSuccess(`Network "${network.name}" created`);
+          await loadNetworks();
+          showProvisionModal(network, network.provisioning);
+        } catch (e) {
+          toastError(e.message);
+        }
+      }},
+    ],
   });
 }
