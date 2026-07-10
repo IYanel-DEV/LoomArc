@@ -132,6 +132,15 @@ class ServerManager {
     logger.info(`Stopped server "${server.name}" (${id})`);
   }
 
+  kill(id) {
+    const server = this._assert(id);
+    const pid = processManager.getPid(id);
+    processManager.kill(id);
+    db.run("UPDATE servers SET status='stopped', pid=NULL, updated_at=unixepoch() WHERE id=?", [id]);
+    logger.info(`Killed server "${server.name}" (${id}) — PID ${pid}`);
+    return pid;
+  }
+
   async restart(id) {
     const server = this._assert(id);
     if (processManager.getStatus(id) === 'running') {

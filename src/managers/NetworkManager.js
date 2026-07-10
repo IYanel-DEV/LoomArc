@@ -132,6 +132,14 @@ class NetworkManager {
     db.run("UPDATE networks SET status='stopped', updated_at=unixepoch() WHERE id=?", [networkId]);
   }
 
+  kill(networkId) {
+    this._assertExists(networkId);
+    const pid = processManager.getPid(this._processId(networkId));
+    processManager.kill(this._processId(networkId));
+    db.run("UPDATE networks SET status='stopped', pid=NULL, updated_at=unixepoch() WHERE id=?", [networkId]);
+    return pid;
+  }
+
   async restart(networkId) {
     this._assertExists(networkId);
     if (processManager.getStatus(this._processId(networkId)) === 'running') {

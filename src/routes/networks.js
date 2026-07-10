@@ -137,6 +137,24 @@ router.patch('/:id',
   }
 );
 
+// PUT /api/networks/:id/memory — update proxy RAM
+router.put('/:id/memory',
+  param('id').isUUID(),
+  body('memory_mb').isInt({ min: 128, max: 16384 }).withMessage('memory_mb must be 128–16384'),
+  validate,
+  async (req, res) => {
+    try {
+      const network = networkManager.get(req.params.id);
+      if (!network) return res.status(404).json({ error: 'Network not found' });
+      const db = require('../database');
+      db.run('UPDATE networks SET memory_mb = ?, updated_at = unixepoch() WHERE id = ?', [req.body.memory_mb, req.params.id]);
+      res.json(networkManager.get(req.params.id));
+    } catch (e) {
+      res.status(409).json({ error: e.message });
+    }
+  }
+);
+
 // DELETE /api/networks/:id
 router.delete('/:id', param('id').isUUID(), validate, async (req, res) => {
   try {
@@ -162,6 +180,16 @@ router.post('/:id/stop', param('id').isUUID(), validate, async (req, res) => {
   try {
     await networkManager.stop(req.params.id);
     res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/networks/:id/kill — force-kill the BungeeCord process
+router.post('/:id/kill', param('id').isUUID(), validate, (req, res) => {
+  try {
+    const pid = networkManager.kill(req.params.id);
+    res.json({ ok: true, pid, method: 'taskkill' });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

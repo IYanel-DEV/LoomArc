@@ -139,6 +139,46 @@ class PluginManager {
   listForServer(serverId) {
     return db.all('SELECT * FROM plugins WHERE server_id = ? ORDER BY installed_at DESC', [serverId]);
   }
+
+  // ─── Local filesystem plugin scan / toggle ───────────────────────────────
+
+  listLocal(serverId) {
+    const server = db.get('SELECT * FROM servers WHERE id = ?', [serverId]);
+    if (!server) throw new Error(`Server not found: ${serverId}`);
+    const pluginsDir = path.join(config.dataDir, 'servers', server.network_id, serverId, 'plugins');
+    if (!require('fs').existsSync(pluginsDir)) return [];
+    const entries = require('fs').readdirSync(pluginsDir, { withFileTypes: true });
+    const results = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) continue;
+      const name = entry.name;
+      if (name.endsWith('.jar')) {
+        results.push({ fileName: name, enabled: true });
+      } else if (name.endsWith('.jar.disabled')) {
+        results.push({ fileName: name.replace(/\.disabled$/, ''), enabled: false, actualFile: name });
+      }
+    }
+    return results;
+  }
+
+  toggleLocal(serverId, fileName) {
+    const server = db.get('SELECT * FROM servers WHERE id = ?', [serverId]);
+    if (!server) throw new Error(`Server not found: ${serverId}`);
+    const pluginsDir = path.join(config.dataDir, 'servers', server.network_id, serverId, 'plugins');
+    const jarPath = path.join(pluginsDir, fileName);
+    const disabledPath = path.join(pluginsDir, fileName + '.disabled');
+    const fs = require('fs');
+    if (fs.existsSync(jarPath)) {
+      fs.renameSync(jarPath, disabledPath);
+      logger.info(`Plugin toggled OFF: ${fileName} (server ${serverId})`);
+      return { fileName, enabled: false };
+    } else if (fs.existsSync(disabledPath)) {
+      fs.renameSync(disabledPath, jarPath);
+      logger.info(`Plugin toggled ON: ${fileName} (server ${serverId})`);
+      return { fileName, enabled: true };
+    }
+    throw new Error(`Plugin not found: ${fileName} (checked .jar and .jar.disabled)`);
+  }
 }
 
 module.exports = new PluginManager();

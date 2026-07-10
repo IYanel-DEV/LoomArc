@@ -310,11 +310,11 @@ The panel exposes a REST API at `/api`. All endpoints require the `x-api-key` he
 
 ### Near-term
 
-- [ ] **Dark/light theme toggle** — persist preference to `localStorage`
-- [ ] **Server RAM editor** — change `memory_mb` without deleting and recreating the server
-- [ ] **BungeeCord memory config** — expose `memory_mb` per network, currently fixed at 512 MB
-- [ ] **Console search** — filter console output by keyword in real time
-- [ ] **Plugin management** — list installed plugins, enable/disable (rename `.jar` ↔ `.jar.disabled`)
+- [x] **Dark/light theme toggle** — persist preference to `localStorage`
+- [x] **Server RAM editor** — change `memory_mb` without deleting and recreating the server
+- [x] **BungeeCord memory config** — expose `memory_mb` per network, currently fixed at 512 MB
+- [x] **Console search** — filter console output by keyword in real time
+- [x] **Plugin management** — list installed plugins, enable/disable (rename `.jar` ↔ `.jar.disabled`)
 
 ### Medium-term
 

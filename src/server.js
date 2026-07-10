@@ -219,3 +219,47 @@ function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
+
+// ─── Emergency shutdown hooks ─────────────────────────────────────────────────
+// If the Node.js process itself is about to exit (e.g. terminal close, uncaught
+// exception, process.exit()), force-kill every tracked child process immediately.
+// This handler must be synchronous.
+
+const proc = require('child_process');
+
+function emergencyKillAll() {
+  // Kill all processes tracked by ProcessManager
+  const snapshot = processManager.snapshot();
+  for (const [id, info] of Object.entries(snapshot)) {
+    if (info.status === 'running' || info.status === 'starting') {
+      try {
+        if (process.platform === 'win32') {
+          proc.execSync(`taskkill /PID ${info.pid} /T /F`, { stdio: 'ignore' });
+        } else {
+          try { process.kill(info.pid, 'SIGKILL'); } catch {}
+        }
+      } catch {}
+    }
+  }
+  // Also sweep any PIDs still in the DB
+  try {
+    const db = require('./database');
+    const rows = [
+      ...db.all('SELECT pid FROM servers  WHERE pid IS NOT NULL'),
+      ...db.all('SELECT pid FROM networks WHERE pid IS NOT NULL'),
+    ];
+    rows.forEach(r => killOrphan(r.pid));
+  } catch {} // DB may already be closed
+}
+
+process.on('exit', (code) => {
+  emergencyKillAll();
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error(`[FATAL] Uncaught exception: ${err.message}\n${err.stack}`);
+  emergencyKillAll();
+  // Give async cleanup a small chance, then hard exit
+  setTimeout(() => process.exit(1), 1000).unref();
+  shutdown('uncaughtException');
+});

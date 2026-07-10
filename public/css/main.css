@@ -1,5 +1,5 @@
-/* ── Design tokens ──────────────────────────────────────────────────────────── */
-:root {
+/* ── Design tokens (dark — default) ──────────────────────────────────────────── */
+:root, [data-theme="dark"] {
   --bg:             #0a0c17;
   --surface:        #12152a;
   --surface-2:      #191d34;
@@ -26,6 +26,32 @@
   --shadow-sm:      0 1px 4px rgba(0,0,0,.35);
   --shadow-md:      0 4px 16px rgba(0,0,0,.4), 0 1px 4px rgba(0,0,0,.25);
   --shadow-lg:      0 8px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.3);
+  --console-bg:     #080a12;
+}
+
+[data-theme="light"] {
+  --bg:             #f5f7fb;
+  --surface:        #ffffff;
+  --surface-2:      #eef0f6;
+  --surface-3:      #e2e5ef;
+  --border:         #d0d5e0;
+  --border-bright:  #a0a9c0;
+  --accent:         #7c3aed;
+  --accent-dim:     #6d28d9;
+  --accent-bright:  #8b5cf6;
+  --accent-glow:    rgba(124,58,237,.12);
+  --accent-glow-md: rgba(124,58,237,.25);
+  --cyan:           #0891b2;
+  --green:          #059669;
+  --yellow:         #d97706;
+  --red:            #dc2626;
+  --text:           #1e1e2e;
+  --text-dim:       #4a4a5a;
+  --text-muted:     #7a7a8a;
+  --shadow-sm:      0 1px 4px rgba(0,0,0,.08);
+  --shadow-md:      0 4px 16px rgba(0,0,0,.1), 0 1px 4px rgba(0,0,0,.06);
+  --shadow-lg:      0 8px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08);
+  --console-bg:     #f0f2f8;
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
@@ -116,6 +142,42 @@ input, select, textarea { font: inherit; }
   color: var(--text-muted);
   font-family: var(--font-mono);
   opacity: .7;
+}
+
+/* ── Theme toggle ──────────────────────────────────────────────────────────── */
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.theme-toggle input { display: none; }
+.theme-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-bright);
+  border-radius: 9px;
+  transition: background var(--transition);
+}
+.theme-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text);
+  border-radius: 50%;
+  transition: transform var(--transition);
+}
+.theme-toggle input:checked + .theme-slider {
+  background: var(--accent);
+}
+.theme-toggle input:checked + .theme-slider::before {
+  transform: translateX(16px);
 }
 
 /* ── Main content ───────────────────────────────────────────────────────────── */
@@ -383,7 +445,7 @@ input, select, textarea { font: inherit; }
 
 /* ── Console ────────────────────────────────────────────────────────────────── */
 .console-panel {
-  background: #080a12;
+  background: var(--console-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex;
@@ -408,6 +470,28 @@ input, select, textarea { font: inherit; }
   flex-shrink: 0;
   opacity: .7;
   font-size: .72rem;
+}
+
+.console-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,.15);
+}
+.console-filter-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: .76rem;
+}
+.console-filter-input::placeholder {
+  color: var(--text-muted);
+  opacity: .6;
 }
 
 .console-input-row {
@@ -838,6 +922,42 @@ input, select, textarea { font: inherit; }
   .main-content { padding: 16px; }
   .networks-grid { grid-template-columns: 1fr; }
   .plugin-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Plugin toggle switch ───────────────────────────────────────────────────── */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toggle-switch input { display: none; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-bright);
+  border-radius: 10px;
+  transition: background var(--transition);
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text);
+  border-radius: 50%;
+  transition: transform var(--transition);
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--green);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
 }
 
 /* ── Telemetry Monitor ───────────────────────────────────────────────────────── */

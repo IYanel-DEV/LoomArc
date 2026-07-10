@@ -60,9 +60,29 @@ function setActiveNav(page) {
   });
 }
 
+// ── Theme toggle ──────────────────────────────────────────────────────────────
+
+function initTheme() {
+  const stored = localStorage.getItem('loomarc-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = stored || (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  const cb = document.getElementById('theme-checkbox');
+  if (cb) {
+    cb.checked = theme === 'light';
+    cb.addEventListener('change', () => {
+      const t = cb.checked ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('loomarc-theme', t);
+    });
+  }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function boot() {
+  initTheme();
+
   try {
     await initApi();
   } catch (e) {

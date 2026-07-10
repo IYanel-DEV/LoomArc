@@ -87,6 +87,23 @@ router.patch('/:id',
   }
 );
 
+// PUT /api/servers/:id/memory — update allocated RAM
+router.put('/:id/memory',
+  param('id').isUUID(),
+  body('memory_mb').isInt({ min: 256, max: 32768 }).withMessage('memory_mb must be 256–32768'),
+  validate,
+  async (req, res) => {
+    try {
+      const server = serverManager.get(req.params.id);
+      if (!server) return res.status(404).json({ error: 'Server not found' });
+      const updated = await serverManager.updateSettings(req.params.id, { memoryMb: req.body.memory_mb });
+      res.json({ ...updated, liveStatus: serverManager.getLiveStatus(updated.id) });
+    } catch (e) {
+      res.status(409).json({ error: e.message });
+    }
+  }
+);
+
 // DELETE /api/servers/:id
 router.delete('/:id', param('id').isUUID(), validate, async (req, res) => {
   try {
@@ -122,6 +139,16 @@ router.post('/:id/restart', param('id').isUUID(), validate, async (req, res) => 
   try {
     await serverManager.restart(req.params.id);
     res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/servers/:id/kill — force-kill the server process
+router.post('/:id/kill', param('id').isUUID(), validate, (req, res) => {
+  try {
+    const pid = serverManager.kill(req.params.id);
+    res.json({ ok: true, pid, method: 'taskkill' });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -351,6 +378,30 @@ router.post('/:id/upload-jar', param('id').isUUID(), validate, upload.single('ja
 router.get('/:id/plugins', param('id').isUUID(), validate, (req, res) => {
   res.json(pluginManager.listForServer(req.params.id));
 });
+
+// GET /api/servers/:id/plugins/local — scan filesystem for .jar / .jar.disabled
+router.get('/:id/plugins/local', param('id').isUUID(), validate, (req, res) => {
+  try {
+    res.json(pluginManager.listLocal(req.params.id));
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// POST /api/servers/:id/plugins/toggle — toggle .jar / .jar.disabled
+router.post('/:id/plugins/toggle',
+  param('id').isUUID(),
+  body('file_name').trim().notEmpty().withMessage('file_name is required'),
+  validate,
+  (req, res) => {
+    try {
+      const result = pluginManager.toggleLocal(req.params.id, req.body.file_name);
+      res.json(result);
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  }
+);
 
 // POST /api/servers/:id/plugins/install-spiget
 router.post('/:id/plugins/install-spiget',

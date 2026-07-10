@@ -60,6 +60,8 @@ function networkCard(n) {
           ${live === 'running' ? 'disabled' : ''}>▶ Start</button>
         <button class="btn btn-sm btn-ghost"   data-action="stop"  data-id="${n.id}"
           ${live !== 'running' ? 'disabled' : ''}>■ Stop</button>
+        <button class="btn btn-sm btn-danger"  data-action="kill"  data-id="${n.id}"
+          ${live !== 'running' ? 'disabled' : ''} title="Force kill (SIGKILL / taskkill)">☠ Kill</button>
         <button class="btn btn-sm btn-ghost"   data-action="open"  data-id="${n.id}"
           style="margin-left:auto">Open →</button>
         <button class="btn btn-sm btn-danger"  data-action="delete" data-id="${n.id}">Delete</button>
@@ -310,6 +312,15 @@ async function handleAction(action, id) {
         await networks.stop(id);
         toastSuccess('BungeeCord stopping…');
         setTimeout(loadNetworks, 1000);
+        break;
+      case 'kill':
+        confirm('Force-kill the BungeeCord process? This may cause data loss.', async () => {
+          try {
+            const result = await networks.kill(id);
+            toastSuccess(`BungeeCord killed (PID ${result.pid})`);
+            loadNetworks();
+          } catch (e) { toastError(e.message); }
+        }, { danger: true });
         break;
       case 'open':
         location.hash = `#/network/${id}`;

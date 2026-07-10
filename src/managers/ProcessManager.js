@@ -116,17 +116,23 @@ class ProcessManager extends EventEmitter {
   }
 
   /**
-   * Gracefully stop a process (sends "stop" command, force-kills after timeout).
+   * Gracefully stop a process (sends the correct shutdown command,
+   * force-kills after timeout).
+   *
+   * BungeeCord uses "end" to shut down; Spigot/Paper use "stop".
    */
   stop(id) {
     const entry = this._procs.get(id);
     if (!entry || entry.status !== 'running') return Promise.resolve();
 
+    const isBungee = id.startsWith('bungee-');
+    const shutdownCmd = isBungee ? 'end\n' : 'stop\n';
+
     return new Promise((resolve) => {
       const onClose = () => resolve();
       entry.proc.once('close', onClose);
 
-      try { entry.proc.stdin.write('stop\n'); } catch {}
+      try { entry.proc.stdin.write(shutdownCmd); } catch {}
 
       entry.stopTimer = setTimeout(() => {
         if (entry.status === 'running') {
@@ -162,6 +168,10 @@ class ProcessManager extends EventEmitter {
 
   getStatus(id) {
     return this._procs.get(id)?.status ?? 'stopped';
+  }
+
+  getPid(id) {
+    return this._procs.get(id)?.pid ?? null;
   }
 
   /** Kill every tracked process immediately. Used during panel shutdown. */

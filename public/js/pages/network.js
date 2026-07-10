@@ -45,11 +45,12 @@ function render(container, network) {
       <div>
         <a href="#/" style="color:var(--text-muted);font-size:.85rem">← Networks</a>
         <div class="page-title" style="margin-top:6px">${escHtml(network.name)}</div>
-        <div class="page-subtitle">BungeeCord proxy · port <span class="chip">${network.bungee_port}</span></div>
+        <div class="page-subtitle">BungeeCord proxy · port <span class="chip">${network.bungee_port}</span> · <span class="chip">${network.memory_mb}MB</span></div>
       </div>
       <div class="flex gap-2" style="align-items:center">
         ${statusBadge(live)}
         <button class="btn btn-sm btn-ghost" id="btn-rename">Rename</button>
+        <button class="btn btn-sm btn-ghost" id="btn-ram" title="Allocate Proxy RAM">💾 RAM</button>
         <button class="btn btn-sm btn-ghost" id="btn-sync-cfg" title="Regenerate BungeeCord config.yml">Sync Config</button>
       </div>
     </div>
@@ -73,6 +74,8 @@ function render(container, network) {
             ${live === 'running' ? 'disabled' : ''}>▶ Start BungeeCord</button>
           <button class="btn btn-sm btn-ghost" id="btn-stop-bungee"
             ${live !== 'running' ? 'disabled' : ''}>■ Stop BungeeCord</button>
+          <button class="btn btn-sm btn-danger" id="btn-kill-bungee"
+            ${live !== 'running' ? 'disabled' : ''} title="Force kill (SIGKILL / taskkill)">☠ Kill</button>
           <button class="btn btn-primary btn-sm" id="btn-add-server">+ Add Server</button>
         </div>
       </div>
@@ -125,6 +128,10 @@ function render(container, network) {
     showRenameModal(network.id, network.name, () => rerenderSilent(container, network.id));
   });
 
+  document.getElementById('btn-ram').addEventListener('click', () => {
+    showNetworkRamModal(network.id, network.memory_mb, () => rerenderSilent(container, network.id));
+  });
+
   document.getElementById('btn-sync-cfg').addEventListener('click', async () => {
     try {
       await networks.syncConfig(network.id);
@@ -147,6 +154,19 @@ function render(container, network) {
       setTimeout(() => rerenderSilent(container, network.id), 1200);
     } catch (e) { toastError(e.message); }
   });
+
+  const killBtn = document.getElementById('btn-kill-bungee');
+  if (killBtn) {
+    killBtn.addEventListener('click', () => {
+      confirm('Force-kill the BungeeCord process? This may cause data loss.', async () => {
+        try {
+          const result = await networks.kill(network.id);
+          toastSuccess(`BungeeCord killed (PID ${result.pid})`);
+          rerenderSilent(container, network.id);
+        } catch (e) { toastError(e.message); }
+      }, { danger: true });
+    });
+  }
 
   document.getElementById('btn-add-server').addEventListener('click', () => {
     showAddServerModal(network.id, () => loadServers(network.id));
@@ -200,7 +220,11 @@ function serverRow(s) {
           ${live === 'running' ? 'disabled' : ''}>▶</button>
         <button class="btn btn-sm btn-ghost" data-srv-action="stop" data-id="${s.id}"
           ${live !== 'running' ? 'disabled' : ''}>■</button>
+        <button class="btn btn-sm btn-danger" data-srv-action="kill" data-id="${s.id}"
+          ${live !== 'running' ? 'disabled' : ''} title="Force kill (SIGKILL / taskkill)">☠</button>
         <button class="btn btn-sm btn-ghost" data-srv-action="edit-files" data-id="${s.id}" data-name="${escHtml(s.name)}" title="Edit Config Files">📝</button>
+        <button class="btn btn-sm btn-ghost" data-srv-action="ram" data-id="${s.id}" data-ram="${s.memory_mb}" title="Allocate RAM">💾</button>
+        <button class="btn btn-sm btn-ghost" data-srv-action="plugins" data-id="${s.id}" title="Manage Plugins">🔌</button>
         <button class="btn btn-sm btn-ghost" data-srv-action="upload-jar" data-id="${s.id}" title="Upload JAR">📦</button>
         <button class="btn btn-sm btn-danger" data-srv-action="delete" data-id="${s.id}">✕</button>
       </div>
@@ -222,6 +246,21 @@ async function handleServerAction(action, id, networkId, name = '') {
         break;
       case 'edit-files':
         showFileManagerModal(id, name);
+        break;
+      case 'ram':
+        showRamModal(id, networkId);
+        break;
+      case 'kill':
+        confirm('Force-kill this server? This may cause data loss.', async () => {
+          try {
+            const result = await servers.kill(id);
+            toastSuccess(`Server killed (PID ${result.pid})`);
+            loadServers(networkId);
+          } catch (e) { toastError(e.message); }
+        }, { danger: true });
+        break;
+      case 'plugins':
+        showPluginsModal(id, name, networkId);
         break;
       case 'upload-jar':
         showJarUploadModal(id, null, () => toastSuccess('JAR uploaded'));
@@ -729,6 +768,96 @@ function fmIsText(name) {
     '.ini', '.xml', '.log', '.sh', '.bat', '.cmd', '.md', '.html',
     '.css', '.js', '.ts', '.toml', '.env', '.htaccess',
   ]).has(ext) || !ext;
+}
+
+function showPluginsModal(serverId, serverName, networkId) {
+  const host = document.createElement('div');
+  host.innerHTML = `<div class="loading-splash" style="height:100px"><div class="spinner"></div></div>`;
+
+  const closeModal = showModal({
+    heading: `Plugins — ${serverName}`,
+    content: host,
+    buttons: [{ label: 'Close', cls: 'btn-ghost', onClick: c => c() }],
+  });
+  const box = document.getElementById('modal-box');
+  if (box) { box.style.maxWidth = '600px'; box.style.width = '96vw'; }
+
+  loadPlugins(host, serverId);
+}
+
+async function loadPlugins(host, serverId) {
+  try {
+    const plugins = await servers.pluginsLocal(serverId);
+    if (plugins.length === 0) {
+      host.innerHTML = `<p class="text-muted" style="text-align:center;padding:24px">No plugins found in the plugins/ folder.<br>Upload a .jar to get started.</p>`;
+      return;
+    }
+    host.innerHTML = `<div class="servers-list">${plugins.map(p => `
+      <div class="server-card" style="cursor:default">
+        <div class="server-info">
+          <div class="server-name text-mono" style="font-size:.82rem">${escHtml(p.fileName)}</div>
+        </div>
+        <label class="toggle-switch" title="${p.enabled ? 'Disable plugin' : 'Enable plugin'}">
+          <input type="checkbox" class="plugin-toggle" data-file="${escHtml(p.fileName)}" ${p.enabled ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="status-badge status-${p.enabled ? 'running' : 'stopped'}" style="font-size:.65rem">${p.enabled ? 'ON' : 'OFF'}</span>
+      </div>`).join('')}</div>`;
+
+    host.querySelectorAll('.plugin-toggle').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const fileName = cb.dataset.file;
+        try {
+          await servers.togglePlugin(serverId, fileName);
+          toastSuccess(cb.checked ? `"${fileName}" enabled` : `"${fileName}" disabled`);
+          loadPlugins(host, serverId);
+        } catch (e) {
+          cb.checked = !cb.checked;
+          toastError(e.message);
+        }
+      });
+    });
+  } catch (e) {
+    host.innerHTML = `<p class="text-muted">Error: ${e.message}</p>`;
+  }
+}
+
+function showNetworkRamModal(networkId, currentMb, onDone) {
+  prompt('Allocate Proxy RAM', [
+    { name: 'memory_mb', label: 'Proxy Memory (MB)', type: 'number', default: String(currentMb || 512),
+      hint: '128–16384 MB. BungeeCord is lightweight; 512 MB is usually enough.' },
+  ], async (data, close) => {
+    const mb = parseInt(data.memory_mb);
+    if (isNaN(mb) || mb < 128 || mb > 16384) {
+      toastError('Memory must be between 128 and 16384 MB');
+      return;
+    }
+    try {
+      await networks.setMemory(networkId, mb);
+      toastSuccess(`Proxy RAM set to ${mb} MB`);
+      close();
+      if (onDone) onDone();
+    } catch (e) { toastError(e.message); }
+  });
+}
+
+function showRamModal(serverId, networkId) {
+  prompt('Allocate RAM', [
+    { name: 'memory_mb', label: 'Memory (MB)', type: 'number', default: '1024',
+      hint: '256–32768 MB. Takes effect on next server start.' },
+  ], async (data, close) => {
+    const mb = parseInt(data.memory_mb);
+    if (isNaN(mb) || mb < 256 || mb > 32768) {
+      toastError('Memory must be between 256 and 32768 MB');
+      return;
+    }
+    try {
+      await servers.setMemory(serverId, mb);
+      toastSuccess(`RAM set to ${mb} MB`);
+      close();
+      loadServers(networkId);
+    } catch (e) { toastError(e.message); }
+  });
 }
 
 function fmFmtSize(bytes) {
