@@ -1,0 +1,33 @@
+{
+  "name": "loomarc",
+  "version": "1.0.0",
+  "description": "Self-hosted Minecraft network management panel — BungeeCord + Spigot, no Docker",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon --watch src src/server.js",
+    "setup": "node setup.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "better-sqlite3": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "js-yaml": "^4.1.0",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^10.0.0",
+    "winston": "^3.13.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}

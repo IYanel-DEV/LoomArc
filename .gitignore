@@ -1,0 +1,68 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Runtime data (server files, JARs, worlds, plugins) ───────────────────────
+# The entire data/ tree is generated at runtime and must never be committed.
+# It contains live server instances, player data, and potentially large JARs.
+data/
+
+# ── SQLite database files ─────────────────────────────────────────────────────
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+
+# ── Log files ─────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── JAR files (binary artifacts — use the panel's JAR manager instead) ───────
+*.jar
+
+# ── OS-generated files ────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ── Editor & IDE directories ──────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+
+# ── Temporary files ───────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ── Coverage & test output ────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
