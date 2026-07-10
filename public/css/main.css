@@ -839,3 +839,118 @@ input, select, textarea { font: inherit; }
   .networks-grid { grid-template-columns: 1fr; }
   .plugin-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Telemetry Monitor ───────────────────────────────────────────────────────── */
+.telemetry-row {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 8px;
+  transition: border-color var(--transition);
+}
+.telemetry-row:hover { border-color: var(--border-bright); }
+
+.telemetry-label {
+  min-width: 128px;
+  flex-shrink: 0;
+}
+.telemetry-name {
+  font-weight: 600;
+  font-size: .88rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.telemetry-sub {
+  font-size: .72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+
+.telemetry-charts {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.telemetry-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 140px;
+}
+.telemetry-metric-hdr {
+  font-size: .67rem;
+  text-transform: uppercase;
+  letter-spacing: .65px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.telemetry-canvas {
+  display: block;
+  border-radius: 4px;
+  background: rgba(0,0,0,.25);
+}
+.telemetry-val {
+  font-size: .75rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  text-align: right;
+  min-height: 1.1em;
+}
+
+.telemetry-players {
+  flex: 1;
+  min-width: 160px;
+}
+.telemetry-player-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 22px;
+  margin-top: 4px;
+}
+.telemetry-player-count {
+  font-size: .78rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--green);
+  margin-right: 4px;
+  min-width: 14px;
+}
+.telemetry-player-chip {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: .7rem;
+  font-family: var(--font-mono);
+  color: var(--cyan);
+  white-space: nowrap;
+}
+.telemetry-player-more {
+  font-size: .7rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.telemetry-empty {
+  text-align: center;
+  padding: 44px 24px;
+  color: var(--text-muted);
+  font-size: .875rem;
+}
+
+@media (max-width: 768px) {
+  .telemetry-row { flex-direction: column; align-items: flex-start; }
+  .telemetry-charts { gap: 12px; }
+}

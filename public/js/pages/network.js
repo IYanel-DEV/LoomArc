@@ -1,7 +1,8 @@
-import { networks, servers, system } from '../api.js';
+import { networks, servers, system, getApiKey } from '../api.js';
 import { toastSuccess, toastError, toastInfo } from '../components/toast.js';
 import { prompt, confirm, showModal } from '../components/modal.js';
 import { ConsoleComponent } from '../components/console.js';
+import { TelemetryMonitor } from '../components/telemetry.js';
 
 const TYPE_ICONS  = { hub:'🏠', survival:'⚔️', bedwars:'🛏️', skywars:'☁️', custom:'⚙️' };
 const TYPE_LABELS = { hub:'Hub', survival:'Survival', bedwars:'BedWars', skywars:'SkyWars', custom:'Custom' };
@@ -58,6 +59,7 @@ function render(container, network) {
       <button class="tab-btn" data-tab="bungee-console">BungeeCord Console</button>
       <button class="tab-btn" data-tab="bungee-files">Proxy Files</button>
       <button class="tab-btn" data-tab="jars">JAR Manager</button>
+      <button class="tab-btn" data-tab="monitoring">Monitoring</button>
     </div>
 
     <!-- Servers tab -->
@@ -94,6 +96,12 @@ function render(container, network) {
       <div class="card-title" style="margin-bottom:10px">JAR Files</div>
       <div id="jar-manager-host"></div>
     </div>
+
+    <!-- Monitoring tab -->
+    <div data-tab-panel="monitoring" class="hidden">
+      <div class="card-title" style="margin-bottom:14px">Live Instance Metrics</div>
+      <div id="telemetry-host"></div>
+    </div>
   `;
 
   // ── Tab switching ────────────────────────────────────────────────────────
@@ -108,6 +116,7 @@ function render(container, network) {
       if (tab === 'bungee-console') initBungeeConsole(network);
       if (tab === 'bungee-files')  initProxyFileManager(network.id);
       if (tab === 'jars')          initJarManager(network, container);
+      if (tab === 'monitoring')    initMonitoring(network);
     });
   });
 
@@ -258,6 +267,38 @@ function initBungeeConsole(network) {
   host.dataset.mounted = '1';
   const con = new ConsoleComponent(host, `bungee-${network.id}`);
   _consoles.add(con);
+}
+
+async function initMonitoring(network) {
+  const host = document.getElementById('telemetry-host');
+  if (!host || host.dataset.mounted) return;
+  host.dataset.mounted = '1';
+
+  // Build processId → display-meta map: proxy first, then each server
+  const processMap = new Map();
+  processMap.set(`bungee-${network.id}`, {
+    name:  network.name,
+    label: 'BungeeCord Proxy',
+  });
+
+  let srvs = network.servers || [];
+  if (srvs.length === 0) {
+    try { srvs = (await networks.get(network.id)).servers || []; } catch {}
+  }
+  for (const s of srvs) {
+    processMap.set(s.id, {
+      name:  s.name,
+      label: `${TYPE_LABELS[s.type] || s.type} · :${s.port}`,
+    });
+  }
+
+  const monitor = new TelemetryMonitor(host, processMap, getApiKey());
+  _consoles.add(monitor); // destroy() is called by unmount()
+
+  // Seed charts with buffered history so they're not empty on open
+  for (const processId of processMap.keys()) {
+    monitor.seedHistory(processId);
+  }
 }
 
 async function initJarManager(network, container) {

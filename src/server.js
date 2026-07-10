@@ -5,9 +5,10 @@ const path    = require('path');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
-const config         = require('./config');
-const logger         = require('./utils/logger');
-const processManager = require('./managers/ProcessManager');
+const config            = require('./config');
+const logger            = require('./utils/logger');
+const processManager    = require('./managers/ProcessManager');
+const telemetryManager  = require('./managers/TelemetryManager');
 
 // ─── Express app ──────────────────────────────────────────────────────────────
 
@@ -44,10 +45,11 @@ app.use('/api', authMiddleware);
 
 // ─── Route mounting ───────────────────────────────────────────────────────────
 
-app.use('/api/networks', require('./routes/networks'));
-app.use('/api/servers',  require('./routes/servers'));
-app.use('/api/plugins',  require('./routes/plugins'));
-app.use('/api/system',   require('./routes/system'));
+app.use('/api/networks',  require('./routes/networks'));
+app.use('/api/servers',   require('./routes/servers'));
+app.use('/api/plugins',   require('./routes/plugins'));
+app.use('/api/system',    require('./routes/system'));
+app.use('/api/telemetry', require('./routes/telemetry'));
 
 // Catch-all — serve the SPA for client-side routing
 app.get('*', (req, res) => {
@@ -124,9 +126,15 @@ function broadcast(processId, payload) {
 
 processManager.on('line', ({ id, ts, text, stream }) => {
   broadcast(id, { type: 'line', ts, text, stream });
+  telemetryManager.handleLine(id, text);
 });
 
 processManager.on('status', ({ id, status, pid, code, signal, error }) => {
+  if (status === 'running' && pid) {
+    telemetryManager.track(id, pid);
+  } else if (status === 'stopped' || status === 'crashed') {
+    telemetryManager.untrack(id);
+  }
   const db = require('./database');
   // Store PID while the process is live; clear it once it stops or crashes.
   const pidVal = status === 'running' ? (pid ?? null) : null;
